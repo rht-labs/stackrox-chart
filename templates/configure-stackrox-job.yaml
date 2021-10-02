@@ -3,9 +3,10 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: configure-stackrox
+  namespace: {{ .Values.stackrox.namespace | quote }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-weight": "3"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   template:
@@ -16,25 +17,43 @@ spec:
             - /bin/bash
             - -c
             - |
-              set -x
+              test {{ .Values.verbose }} && set -x
               # wait for operator
               while [ true ]; do oc get crd centrals.platform.stackrox.io; if [ $? -eq 0 ]; then break; fi ; sleep 5s; done
+              # wait for central
+              echo "waiting for stackrox-central ..."
+              while test 0 == $(oc -n {{ .Values.stackrox.namespace }} get pod -l app.kubernetes.io/component=central -o name 2>/dev/null | wc -l); do sleep 5; done
+              oc -n {{ .Values.stackrox.namespace }} wait pod -l app.kubernetes.io/component=central --for=condition=Ready --timeout=100s
+              if [ $? != 0 ]; then
+                echo "🛑 timed out waiting for central, exiting 🛑";
+                exit 1;
+              fi
+              sleep 15;
 
               # generate an api token
-              ROX_ENDPOINT=central.stackrox
-              ROX_ADMIN_PASSWD=$(oc -n stackrox get secret central-htpasswd -o go-template='{{ printf "{{index .data \"password\" | base64decode}}" }}')
-              ROX_API_TOKEN=$(curl -sk -u "admin:${ROX_ADMIN_PASSWD}" "https://$ROX_ENDPOINT/v1/apitokens/generate" -d '{"name": "do500 test", "role": "Admin"}' | jq -r '.token')
-              if [ -z ${ROX_API_TOKEN} ]; then
-                echo "🛑 could not generate ROX_API_TOKEN, exiting 🛑";
-                exit 1;
-              fi
+              ROX_ENDPOINT=central.{{ .Values.stackrox.namespace | quote }}
+              ROX_ADMIN_PASSWD=$(oc -n {{ .Values.stackrox.namespace }} get secret central-htpasswd -o go-template='{{ printf "{{index .data \"password\" | base64decode}}" }}')
+
+              while test -z ${ROX_API_TOKEN}; do
+                export ROX_API_TOKEN=$(curl -sk -u "admin:${ROX_ADMIN_PASSWD}" "https://$ROX_ENDPOINT/v1/apitokens/generate" -d '{"name": {{ .Values.stackrox.clusterName | quote }}, "role": "Admin"}' | jq -r '.token')
+                sleep 5;
+              done
+
+              # store token in a secret
+              cat <<EOF | oc apply -n {{ .Values.stackrox.namespace | quote }} -f -
+              apiVersion: v1
+              data:
+                token: "$(printf ${ROX_API_TOKEN} | base64 -w0)"
+              kind: Secret
+              metadata:
+                name: rox-api-token-{{ .Values.stackrox.clusterName }}
+              EOF
 
               # generate init bundle
-              roxctl -e "${ROX_ENDPOINT}:443" central init-bundles generate do500 --output-secrets /tmp/cluster_init_bundle.yaml --insecure-skip-tls-verify
-              if [ ! -f /tmp/cluster_init_bundle.yaml ]; then
-                echo "🛑 could not generate init bundle, exiting 🛑";
-                exit 1;
-              fi
+              while test ! -f /tmp/cluster_init_bundle.yaml; do
+                roxctl -e "${ROX_ENDPOINT}:443" central init-bundles generate {{ .Values.stackrox.clusterName | quote }} --output-secrets /tmp/cluster_init_bundle.yaml --insecure-skip-tls-verify
+                sleep 5;
+              done
               oc -n stackrox apply -f /tmp/cluster_init_bundle.yaml
 
               # create secured cluster
@@ -42,8 +61,8 @@ spec:
               apiVersion: platform.stackrox.io/v1alpha1
               kind: SecuredCluster
               metadata:
-                name: do500-secured-cluster
-                namespace: stackrox
+                name: {{ .Values.stackrox.clusterName }}-secured-cluster
+                namespace: {{ .Values.stackrox.namespace | quote }}
               spec:
                 admissionControl:
                   listenOnCreates: false
@@ -51,8 +70,8 @@ spec:
                   listenOnUpdates: false
                 auditLogs:
                   collection: Auto
-                centralEndpoint: 'central.stackrox:443'
-                clusterName: d0500
+                centralEndpoint: 'central.{{ .Values.stackrox.namespace }}:443'
+                clusterName: {{ .Values.stackrox.clusterName | quote }}
                 perNode:
                   collector:
                     collection: KernelModule

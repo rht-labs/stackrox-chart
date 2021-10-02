@@ -30,12 +30,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: configure-stackrox
-    namespace: stackrox
+    namespace: {{ .Values.stackrox.namespace | quote }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: configure-stackrox
+  name: configure-stackrox-local
+  namespace: {{ .Values.stackrox.namespace | quote }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "1"
@@ -54,6 +55,14 @@ rules:
       - patch
       - update
   - apiGroups:
+      - ""
+    resources:
+      - "pods"
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - "platform.stackrox.io"
     resources:
       - "securedclusters"
@@ -69,7 +78,8 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: configure-stackrox
+  name: configure-stackrox-local
+  namespace: {{ .Values.stackrox.namespace | quote }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "1"
@@ -77,17 +87,17 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: configure-stackrox
+  name: configure-stackrox-local
 subjects:
   - kind: ServiceAccount
     name: configure-stackrox
-    namespace: stackrox
+    namespace: {{ .Values.stackrox.namespace | quote }}
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: configure-stackrox
-  namespace: stackrox
+  namespace: {{ .Values.stackrox.namespace | quote }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "1"
