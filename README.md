@@ -1,7 +1,6 @@
 # stackrox helper chart
 
-Installs the ACS/Stackrox Operator and configures a Central instance and a SecuredCluster. Uses a Kube Job for initialization work.
-
+Installs the ACS/Stackrox Operator and configures a Central instance and a SecuredCluster. Uses a Kube Job for initialization work. Set `--set verbose=true` to see verbose job logs. 
 ```bash
 helm upgrade --install stackrox . --namespace do500 --debug
 ```

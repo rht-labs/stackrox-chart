@@ -17,7 +17,8 @@ spec:
             - /bin/bash
             - -c
             - |
-              test {{ .Values.verbose }} && set -x
+              test {{ .Values.verbose }} == true && set -x
+
               # wait for operator
               while [ true ]; do oc get crd centrals.platform.stackrox.io; if [ $? -eq 0 ]; then break; fi ; sleep 5s; done
               # wait for central
