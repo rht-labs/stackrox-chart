@@ -24,7 +24,7 @@ spec:
               # wait for central
               echo "waiting for stackrox-central ..."
               while test 0 == $(oc -n {{ .Values.stackrox.namespace }} get pod -l app.kubernetes.io/component=central -o name 2>/dev/null | wc -l); do sleep 5; done
-              oc -n {{ .Values.stackrox.namespace }} wait pod -l app.kubernetes.io/component=central --for=condition=Ready --timeout=100s
+              oc -n {{ .Values.stackrox.namespace }} wait pod -l app.kubernetes.io/component=central --for=condition=Ready --timeout=200s
               if [ $? != 0 ]; then
                 echo "🛑 timed out waiting for central, exiting 🛑";
                 exit 1;
